@@ -1,0 +1,713 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Three.js Mini-Map with Chat Cloud</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    /* Optional: Style for the overlay if used elsewhere */
+  </style>
+</head>
+<body>
+  <!-- Main Three.js Canvas -->
+  <canvas id="three-canvas"></canvas>
+  
+  <!-- Mini-Map Canvas (Hidden, used as a texture) -->
+  <canvas id="map-canvas"></canvas>
+  
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.module.js";
+    
+    // **1) Imports & Constants**
+    const tileSize = 80;
+    const maze = [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+      [1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 1, 0, 0, 0, 1, 0, 1],
+      [1, 1, 0, 1, 1, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+      [1, 0, 1, 1, 0, 1, 0, 0, 0, 1],
+      [1, 0, 0, 1, 0, 1, 1, 1, 0, 1],
+      [1, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    ];
+    
+    const playerRadius = 15;
+    const playerSpeed = 2;
+    let walkTime = 0;
+    
+    // **2) Scene, Renderer, and Camera Setup**
+    const canvas = document.getElementById("three-canvas");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000);
+    
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      80,
+      window.innerWidth / window.innerHeight,
+      0.5,
+      2000
+    );
+    scene.add(camera);
+    
+    // Player position and orientation
+    const player = {
+      x: 1.5 * tileSize,
+      z: 1.5 * tileSize,
+      angle: -Math.PI / 2,
+      speed: playerSpeed
+    };
+    
+    // **3) Lighting**
+    const hemiLight = new THREE.HemisphereLight(0xb0b0b0, 0x202020, 0.05);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.05);
+    scene.add(hemiLight, ambientLight);
+    
+    // **4) Floor, Walls, Ceiling**
+    function createFloor() {
+      const floorGeom = new THREE.PlaneGeometry(
+        maze[0].length * tileSize,
+        maze.length * tileSize
+      );
+      floorGeom.rotateX(-Math.PI / 2);
+      const textureLoader = new THREE.TextureLoader();
+      const floorTexture = textureLoader.load("https://i.imgur.com/i5rAvHL.jpeg");
+      floorTexture.wrapS = THREE.RepeatWrapping;
+      floorTexture.wrapT = THREE.RepeatWrapping;
+      floorTexture.repeat.set(25, 25);
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTexture });
+      const floor = new THREE.Mesh(floorGeom, floorMat);
+      floor.position.set(
+        (maze[0].length * tileSize) / 2,
+        0,
+        (maze.length * tileSize) / 2
+      );
+      scene.add(floor);
+    }
+    
+    function createWalls() {
+      const wallGeom = new THREE.BoxGeometry(tileSize, tileSize, tileSize);
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+      for (let row = 0; row < maze.length; row++) {
+        for (let col = 0; col < maze[row].length; col++) {
+          if (maze[row][col] === 1) {
+            const wall = new THREE.Mesh(wallGeom, wallMat);
+            wall.position.set(
+              (col + 0.5) * tileSize,
+              tileSize / 2,
+              (row + 0.5) * tileSize
+            );
+            scene.add(wall);
+          }
+        }
+      }
+    }
+    
+    function createCeiling() {
+      const ceilingGeom = new THREE.PlaneGeometry(
+        maze[0].length * tileSize,
+        maze.length * tileSize
+      );
+      ceilingGeom.rotateX(Math.PI / 2);
+      const textureLoader = new THREE.TextureLoader();
+      const ceilingTexture = textureLoader.load("https://i.imgur.com/GOH0jif.jpeg");
+      ceilingTexture.wrapS = THREE.RepeatWrapping;
+      ceilingTexture.wrapT = THREE.RepeatWrapping;
+      ceilingTexture.repeat.set(maze[0].length, maze.length);
+      const ceilingMat = new THREE.MeshStandardMaterial({
+        map: ceilingTexture,
+        side: THREE.DoubleSide,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.005
+      });
+      const ceiling = new THREE.Mesh(ceilingGeom, ceilingMat);
+      ceiling.position.set(
+        (maze[0].length * tileSize) / 2,
+        tileSize,
+        (maze.length * tileSize) / 2
+      );
+      scene.add(ceiling);
+    }
+    
+    createFloor();
+    createWalls();
+    createCeiling();
+    
+    // **5) Overhead Lamps in the Ceiling**
+    function createCeilingLights() {
+      const lampHeight = tileSize - 1;
+      const lampGeometry = new THREE.BoxGeometry(tileSize * 0.3, tileSize * 0.005, tileSize * 0.3);
+      const lampMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xffffff,
+        emissiveIntensity: 1,
+        side: THREE.DoubleSide
+      });
+    
+      for (let row = 0; row < maze.length; row++) {
+        for (let col = 0; col < maze[row].length; col++) {
+          if (maze[row][col] === 0 && (row + col) % 3 === 0) {
+            const lampMesh = new THREE.Mesh(lampGeometry, lampMaterial);
+            lampMesh.position.set(
+              (col + 0.5) * tileSize,
+              lampHeight,
+              (row + 0.5) * tileSize
+            );
+            scene.add(lampMesh);
+    
+            const lampLight = new THREE.PointLight(0xffffff, 0.6, 150);
+            lampLight.position.set(
+              lampMesh.position.x,
+              lampHeight - 0.5,
+              lampMesh.position.z
+            );
+            scene.add(lampLight);
+    
+            const upwardLight = new THREE.SpotLight(0xffffff, 1.0, 10, Math.PI / 6, 0.3, 2);
+            upwardLight.position.set(
+              lampMesh.position.x,
+              lampHeight - 1,
+              lampMesh.position.z
+            );
+            const spotTarget = new THREE.Object3D();
+            spotTarget.position.set(
+              lampMesh.position.x,
+              tileSize + 1,
+              lampMesh.position.z
+            );
+            scene.add(spotTarget);
+            upwardLight.target = spotTarget;
+            scene.add(upwardLight);
+          }
+        }
+      }
+    }
+    createCeilingLights();
+    
+    // **6) Collision Detection**
+    function isWall(x, z) {
+      const gridX = Math.floor(x / tileSize);
+      const gridZ = Math.floor(z / tileSize);
+      if (gridZ < 0 || gridZ >= maze.length || gridX < 0 || gridX >= maze[0].length) {
+        return true;
+      }
+      return maze[gridZ][gridX] === 1;
+    }
+    
+    function isCollidingWithWall(x, z, radius) {
+      for (let angleDeg = 0; angleDeg < 360; angleDeg += 45) {
+        const rad = (angleDeg * Math.PI) / 180;
+        const checkX = x + Math.cos(rad) * radius;
+        const checkZ = z + Math.sin(rad) * radius;
+        if (isWall(checkX, checkZ)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    // **7) Keyboard Input (Movement)**
+    const keys = {
+      ArrowUp: false,
+      ArrowDown: false,
+      ArrowLeft: false,
+      ArrowRight: false
+    };
+    
+    window.addEventListener("keydown", (e) => {
+      if (keys[e.key] !== undefined) {
+        keys[e.key] = true;
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (keys[e.key] !== undefined) {
+        keys[e.key] = false;
+      }
+    });
+    
+    // **8) Posters**
+    const posters = [];
+    
+    function createPoster(x, z, color, rotation = Math.PI / 2) {
+      const posterGeom = new THREE.PlaneGeometry(20, 30);
+      const posterMat = new THREE.MeshStandardMaterial({
+        color,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -4
+      });
+      const poster = new THREE.Mesh(posterGeom, posterMat);
+      const offset = 10;
+      poster.position.set(
+        x + Math.cos(rotation) * offset,
+        tileSize / 1.9,
+        z + Math.sin(rotation) * offset
+      );
+      poster.rotation.y = rotation;
+      poster.frustumCulled = false;
+      scene.add(poster);
+      posters.push(poster);
+    }
+    
+    function addPosters() {
+      createPoster(tileSize * 2, tileSize * 4.5, 0xff0000);
+      createPoster(tileSize * 5, tileSize * 1.5, 0x00ff00);
+      createPoster(tileSize * 6, tileSize * 6, 0x0000ff);
+      createPoster(tileSize * 8, tileSize * 3, 0xffff00);
+      createPoster(tileSize * 3, tileSize * 7.5, 0xff00ff);
+      scene.updateMatrixWorld(true);
+      renderer.render(scene, camera);
+    }
+    addPosters();
+    
+    // **9) Interaction**
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    
+    function setupPosterInteraction() {
+      const overlay = document.createElement("div");
+      overlay.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 300px;
+        height: 200px;
+        background-color: white;
+        border: 2px solid black;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        display: none;
+        z-index: 10;
+      `;
+      overlay.innerHTML = `
+        <div style="padding: 10px; background: #333; color: white; display: flex; justify-content: space-between; align-items: center;">
+          <span>Interactive Poster</span>
+          <button id="close-overlay" style="background: red; border: none; color: white; font-weight: bold; cursor: pointer;">X</button>
+        </div>
+        <div id="overlay-content" style="padding: 10px;">Poster Content</div>
+      `;
+      document.body.appendChild(overlay);
+    
+      document.getElementById("close-overlay").addEventListener("click", () => {
+        overlay.style.display = "none";
+      });
+    
+      function openWindow(color) {
+        const content = document.getElementById("overlay-content");
+        content.innerHTML = `Clicked color: #${color.toUpperCase()}`;
+        overlay.style.display = "block";
+      }
+    
+      window.addEventListener("click", (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(posters);
+        if (intersects.length > 0) {
+          const poster = intersects[0].object;
+          openWindow(poster.material.color.getHexString());
+        }
+      });
+    }
+    setupPosterInteraction();
+    
+    // **10) Mini-Map**
+    const mapCanvas = document.getElementById("map-canvas");
+    mapCanvas.style.display = "none"; // Hide the canvas element from the DOM
+    const mapCtx = mapCanvas.getContext("2d");
+    mapCanvas.width = 200;
+    mapCanvas.height = 400;
+    const mapScale = 25;
+    const mapTexture = new THREE.CanvasTexture(mapCanvas);
+    mapTexture.minFilter = THREE.LinearFilter;
+    mapTexture.magFilter = THREE.LinearFilter;
+    
+    // Flag to control the display of the initial message
+    let showMessage = true;
+    
+    // Coordinates and dimensions for the chat cloud and 'X' button
+    const chatCloud = {
+      x: 15,        // Padding from the canvas edges
+      y: 15,
+      width: 170,   // Increased width
+      height: 180,  // Increased height to fit all text
+      padding: 15,  // Increased padding for text
+      borderRadius: 15
+    };
+    
+    const closeButton = {
+      x: chatCloud.x + chatCloud.width - 30, // Positioned inside the enlarged chat cloud
+      y: chatCloud.y + 20,                  // Adjusted Y position to avoid overlapping text
+      size: 20                               // Increased size for better accessibility
+    };
+    
+    /**
+     * Create a rounded rectangle shape.
+     */
+    function createRoundedRectShape(width, height, radius) {
+      const shape = new THREE.Shape();
+      shape.moveTo(-width / 2 + radius, height / 2);
+      shape.lineTo(width / 2 - radius, height / 2);
+      shape.quadraticCurveTo(width / 2, height / 2, width / 2, height / 2 - radius);
+      shape.lineTo(width / 2, -height / 2 + radius);
+      shape.quadraticCurveTo(width / 2, -height / 2, width / 2 - radius, -height / 2);
+      shape.lineTo(-width / 2 + radius, -height / 2);
+      shape.quadraticCurveTo(-width / 2, -height / 2, -width / 2, -height / 2 + radius);
+      shape.lineTo(-width / 2, height / 2 - radius);
+      shape.quadraticCurveTo(-width / 2, height / 2, -width / 2 + radius, height / 2);
+      return shape;
+    }
+    
+    /**
+     * Create the smartphone mesh with a mini-map screen.
+     */
+    function createSmartphoneMesh() {
+      const phoneWidth = 8;
+      const phoneHeight = 15;
+      const cornerRadius = 1.2;
+      const phoneThickness = 0.4;
+    
+      const phoneShape = createRoundedRectShape(phoneWidth, phoneHeight, cornerRadius);
+      const extrudeSettings = {
+        depth: phoneThickness,
+        bevelEnabled: false,
+        steps: 1,
+      };
+      const phoneBodyGeom = new THREE.ExtrudeGeometry(phoneShape, extrudeSettings);
+      phoneBodyGeom.translate(0, 0, -phoneThickness * 0.5);
+      const phoneBodyMat = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        metalness: 0.5,
+        roughness: 0.4,
+      });
+      const phoneBody = new THREE.Mesh(phoneBodyGeom, phoneBodyMat);
+    
+      const screenGeom = new THREE.PlaneGeometry(phoneWidth * 0.85, phoneHeight * 0.85);
+      const screenMat = new THREE.MeshBasicMaterial({
+        map: mapTexture,
+        side: THREE.FrontSide,
+      });
+      screenMat.toneMapped = false;
+      const screenMesh = new THREE.Mesh(screenGeom, screenMat);
+      screenMesh.position.set(0, 0, phoneThickness * 0.51);
+      phoneBody.add(screenMesh);
+    
+      const bezelShape = createRoundedRectShape(phoneWidth + 0.3, phoneHeight + 0.3, cornerRadius + 0.3);
+      const bezelGeom = new THREE.ExtrudeGeometry(bezelShape, { depth: 0.1, bevelEnabled: false });
+      bezelGeom.translate(0, 0, -0.05);
+      const bezelMat = new THREE.MeshStandardMaterial({
+        color: 0x555555,
+        metalness: 0.8,
+        roughness: 0.3,
+      });
+      const bezelMesh = new THREE.Mesh(bezelGeom, bezelMat);
+      phoneBody.add(bezelMesh);
+      bezelMesh.position.z = -phoneThickness * 0.5 - 0.05;
+    
+      const speakerGeom = new THREE.PlaneGeometry(phoneWidth * 0.3, 0.2);
+      const speakerMat = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        metalness: 0.2,
+        roughness: 0.8,
+      });
+      const speakerMesh = new THREE.Mesh(speakerGeom, speakerMat);
+      speakerMesh.position.set(0, phoneHeight * 0.48, phoneThickness * 0.52);
+      phoneBody.add(speakerMesh);
+    
+      const buttonGeom = new THREE.CircleGeometry(phoneWidth * 0.05, 32);
+      const buttonMat = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        metalness: 0.2,
+        roughness: 0.8,
+      });
+      const homeButtonMesh = new THREE.Mesh(buttonGeom, buttonMat);
+      homeButtonMesh.position.set(0, -phoneHeight * 0.45, phoneThickness * 0.52);
+      phoneBody.add(homeButtonMesh);
+    
+      return phoneBody;
+    }
+    
+    const phoneMesh = createSmartphoneMesh();
+    camera.add(phoneMesh);
+    phoneMesh.rotation.x = THREE.MathUtils.degToRad(-8);
+    phoneMesh.position.set(10, -4, -10);
+    phoneMesh.scale.set(0.5, 0.5, 0.5);
+    
+    /**
+     * Draw a mosaic pattern.
+     */
+    function drawMosaic(ctx, x, y, width, height) {
+      const mosaicSize = 2;
+      for (let row = 0; row < height / mosaicSize; row++) {
+        for (let col = 0; col < width / mosaicSize; col++) {
+          ctx.fillStyle = (row + col) % 2 === 0 ? 'white' : 'black';
+          ctx.fillRect(
+            x + col * mosaicSize,
+            y + row * mosaicSize,
+            mosaicSize,
+            mosaicSize
+          );
+        }
+      }
+    }
+    
+    /**
+     * Draw a wall cell on the mini-map.
+     */
+    function drawWallCell(ctx, row, col, x, y, size) {
+      let hasWallBelow = false;
+      if (row < maze.length - 1 && maze[row + 1][col] === 1) {
+        hasWallBelow = true;
+      }
+      if (hasWallBelow) {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x, y, size, size);
+      } else {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x, y, size, size / 2);
+        drawMosaic(ctx, x, y + size / 2, size, size / 2);
+      }
+    }
+    
+    /**
+     * Draw a colorful pixelated 'X' for posters.
+     */
+    function drawPixelatedX(ctx, x, y, size, color) {
+      const mosaicSize = 3;
+      const numCells = Math.floor(size / mosaicSize);
+      ctx.fillStyle = color;
+      for (let row = 0; row < numCells; row++) {
+        for (let col = 0; col < numCells; col++) {
+          if (row === col || row + col === numCells - 1) {
+            ctx.fillRect(
+              x + col * mosaicSize,
+              y + row * mosaicSize,
+              mosaicSize,
+              mosaicSize
+            );
+          }
+        }
+      }
+    }
+    
+    /**
+     * Draw a white square as the player pointer.
+     */
+    function drawPlayerSquare(ctx, x, y) {
+      const size = 10; // Size of the square
+      ctx.fillStyle = 'white';
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+    }
+    
+    /**
+     * Draw a chat cloud with the message and a close 'X' button.
+     */
+    function drawChatCloud(ctx) {
+      // Draw chat cloud background
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(chatCloud.x + chatCloud.borderRadius, chatCloud.y);
+      ctx.lineTo(chatCloud.x + chatCloud.width - chatCloud.borderRadius, chatCloud.y);
+      ctx.quadraticCurveTo(chatCloud.x + chatCloud.width, chatCloud.y, chatCloud.x + chatCloud.width, chatCloud.y + chatCloud.borderRadius);
+      ctx.lineTo(chatCloud.x + chatCloud.width, chatCloud.y + chatCloud.height - chatCloud.borderRadius);
+      ctx.quadraticCurveTo(chatCloud.x + chatCloud.width, chatCloud.y + chatCloud.height, chatCloud.x + chatCloud.width - chatCloud.borderRadius, chatCloud.y + chatCloud.height);
+      ctx.lineTo(chatCloud.x + chatCloud.borderRadius, chatCloud.y + chatCloud.height);
+      ctx.quadraticCurveTo(chatCloud.x, chatCloud.y + chatCloud.height, chatCloud.x, chatCloud.y + chatCloud.height - chatCloud.borderRadius);
+      ctx.lineTo(chatCloud.x, chatCloud.y + chatCloud.borderRadius);
+      ctx.quadraticCurveTo(chatCloud.x, chatCloud.y, chatCloud.x + chatCloud.borderRadius, chatCloud.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    
+      // Draw the message text
+      ctx.fillStyle = 'black';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const text = "Use arrow keys to move.\nClick on posters marked with X on the map.\nDon't get lost!";
+      const lines = text.split('\n');
+      lines.forEach((line, index) => {
+        // Start text below the 'X' button to prevent overlap
+        const textY = chatCloud.y + chatCloud.padding + closeButton.size + (index * 18);
+        ctx.fillText(line, chatCloud.x + chatCloud.padding, textY);
+      });
+    
+      // Draw the 'X' button
+      ctx.fillStyle = 'red';
+      ctx.beginPath();
+      ctx.arc(closeButton.x, closeButton.y, closeButton.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'white';
+      ctx.font = '16px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('X', closeButton.x, closeButton.y);
+    }
+    
+    /**
+     * Draw the mini-map.
+     */
+    function drawMap() {
+      mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+      mapCtx.fillStyle = "black";
+      mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+      
+      const centerX = mapCanvas.width / 2;
+      const centerZ = mapCanvas.height / 2;
+      const playerMapX = (player.x / tileSize) * mapScale;
+      const playerMapZ = (player.z / tileSize) * mapScale;
+    
+      mapCtx.save();
+      mapCtx.translate(centerX, centerZ);
+      mapCtx.rotate(player.angle);
+    
+      // Draw walls
+      for (let row = 0; row < maze.length; row++) {
+        for (let col = 0; col < maze[row].length; col++) {
+          if (maze[row][col] === 1) {
+            const cellX = col * mapScale - playerMapX;
+            const cellZ = row * mapScale - playerMapZ;
+            drawWallCell(mapCtx, row, col, cellX, cellZ, mapScale);
+          }
+        }
+      }
+    
+      // Draw posters with colorful 'X's
+      posters.forEach((poster) => {
+        const posterX = (poster.position.x / tileSize) * mapScale - playerMapX;
+        const posterZ = (poster.position.z / tileSize) * mapScale - playerMapZ;
+        const colorHex = poster.material.color.getHexString();
+        const color = `#${colorHex}`;
+        drawPixelatedX(mapCtx, posterX - 8, posterZ - 8, 12, color);
+      });
+    
+      mapCtx.restore();
+    
+      // Draw player as a white square
+      drawPlayerSquare(mapCtx, centerX, centerZ);
+    
+      // Draw chat cloud if the message is to be shown
+      if (showMessage) {
+        drawChatCloud(mapCtx);
+      }
+    }
+    
+    /**
+     * Handle click events to close the chat message.
+     */
+    function setupMapMessageInteraction() {
+      // Raycaster and mouse vector for detecting clicks on the phone screen
+      const raycasterMessage = new THREE.Raycaster();
+      const mouseMessage = new THREE.Vector2();
+    
+      window.addEventListener("click", (event) => {
+        if (!showMessage) return; // No need to handle if message is hidden
+    
+        // Calculate mouse position in normalized device coordinates (-1 to +1)
+        mouseMessage.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouseMessage.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    
+        // Update the raycaster with the camera and mouse position
+        raycasterMessage.setFromCamera(mouseMessage, camera);
+    
+        // Calculate objects intersecting the ray
+        const intersects = raycasterMessage.intersectObject(phoneMesh, true);
+    
+        if (intersects.length > 0) {
+          // Get the intersection point
+          const intersect = intersects[0];
+          const uv = intersect.uv; // UV coordinates (0 to 1)
+    
+          // Map UV to mapCanvas coordinates
+          const canvasX = uv.x * mapCanvas.width;
+          const canvasY = (1 - uv.y) * mapCanvas.height; // Flip Y axis
+    
+          // Debugging: Log the canvas coordinates
+          console.log(`Click detected at canvas coordinates: (${canvasX.toFixed(2)}, ${canvasY.toFixed(2)})`);
+    
+          // Check if the click is within the 'X' button area using distance
+          const distance = Math.sqrt(
+            Math.pow(canvasX - closeButton.x, 2) +
+            Math.pow(canvasY - closeButton.y, 2)
+          );
+          if (distance <= closeButton.size) {
+            // Close the message
+            showMessage = false;
+            drawMap();
+            mapTexture.needsUpdate = true;
+          }
+        }
+      });
+    }
+    setupMapMessageInteraction();
+    
+    /**
+     * Initial drawing of the map with the message.
+     */
+    drawMap();
+    mapTexture.needsUpdate = true;
+    
+    // **11) Animation & Camera Update**
+    function updateCamera() {
+      const baseHeight = 40;
+      const bobOffset = Math.sin(walkTime) * 2;
+      camera.position.set(player.x, baseHeight + bobOffset, player.z);
+      camera.rotation.set(0, player.angle, 0);
+    }
+    
+    function animate() {
+      requestAnimationFrame(animate);
+    
+      // Movement
+      let forward = 0;
+      if (keys.ArrowUp) forward = 1;
+      if (keys.ArrowDown) forward = -1;
+      if (keys.ArrowLeft) player.angle += 0.05;
+      if (keys.ArrowRight) player.angle -= 0.05;
+    
+      const step = forward * player.speed;
+      const dx = -Math.sin(player.angle) * step;
+      const dz = -Math.cos(player.angle) * step;
+    
+      // Check collisions before moving
+      if (!isCollidingWithWall(player.x + dx, player.z, playerRadius)) {
+        player.x += dx;
+      }
+      if (!isCollidingWithWall(player.x, player.z + dz, playerRadius)) {
+        player.z += dz;
+      }
+    
+      // Head bobbing
+      if (forward !== 0) {
+        walkTime += 0.1;
+      } else {
+        walkTime = 0;
+      }
+    
+      // Update camera
+      updateCamera();
+    
+      // Draw the map and update texture
+      drawMap();
+      mapTexture.needsUpdate = true;
+    
+      // Render the scene
+      renderer.render(scene, camera);
+    }
+    animate();
+    
+    // **12) Handle Window Resizes**
+    window.addEventListener("resize", () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+  </script>
+</body>
+</html>
