@@ -2,13 +2,76 @@
 <head>
   <meta charset="UTF-8">
   <title>Three.js Mini-Map with Chat Cloud</title>
+  <!-- Include 98.css for Windows 98 styling -->
+  <link rel="stylesheet" href="https://unpkg.com/98.css" />
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
-    /* Optional: Style for the overlay if used elsewhere */
+    /* Always-visible title */
+    #portfolio-title {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      margin: 10px;
+      color: white;
+      font-family: Tahoma, serif;
+      font-size: 15px;
+      z-index: 9999;
+    }
   </style>
 </head>
 <body>
+  <!-- Starting Window (Instructions) styled with 98.css -->
+  <div id="instructionOverlay" class="window" style="position: fixed; top: 20%; left: 50%; transform: translate(-50%, -20%); z-index: 10000; width: 400px;">
+    <div class="title-bar">
+      <div class="title-bar-text">Welcome to the Game</div>
+      <div class="title-bar-controls"></div>
+    </div>
+    <div class="window-body">
+      <p>
+        Use the arrow keys to move.<br>
+        Click on posters (marked with X on the map) to interact.<br>
+        Explore the maze and have fun!
+      </p>
+      <button id="closeInstructions" class="button">Start Game</button>
+    </div>
+  </div>
+  
+  <!-- Green Poster Window styled with 98.css -->
+  <div id="greenPosterWindow" class="window" style="display: none; position: fixed; top: 20%; left: 50%; transform: translate(-50%, -20%); z-index: 10000; width: 500px;">
+    <div class="title-bar">
+      <div class="title-bar-text">IFFR short movies teaser</div>
+      <div class="title-bar-controls">
+        <button aria-label="Close" id="close-green-poster"></button>
+      </div>
+    </div>
+    <div class="window-body">
+      <p>
+        <strong>Teaser for the Short Film Section – International Rotterdam Film Festival (2023)</strong><br>
+        This video was created as part of a challenge—an internal competition at Willem de Kooning Academie, which I won. Given just two weeks, I refined my concept, hand-drew the entire animation, and crafted the soundscape using recordings from the metro I took to school every day. The final piece was screened at the 2023 International Rotterdam Film Festival.
+      </p>
+      <hr>
+      <div class="image-grid">
+        <iframe title="vimeo-player" src="https://player.vimeo.com/video/781601893?h=5dc0e20375" allowfullscreen style="width:100%; height:300px;"></iframe>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Generic Poster Window styled with 98.css (for non-green posters) -->
+  <div id="genericPosterWindow" class="window" style="display: none; position: fixed; top: 20%; left: 50%; transform: translate(-50%, -20%); z-index: 10000; width: 400px;">
+    <div class="title-bar">
+      <div class="title-bar-text">Interactive Poster</div>
+      <div class="title-bar-controls">
+        <button aria-label="Close" id="close-generic-poster"></button>
+      </div>
+    </div>
+    <div class="window-body" id="genericPosterContent">
+      Poster Content
+    </div>
+  </div>
+  
+  <div id="portfolio-title">Filip Maliszewski 2025©</div>
+  
   <!-- Main Three.js Canvas -->
   <canvas id="three-canvas"></canvas>
   
@@ -17,6 +80,21 @@
   
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.module.js";
+    
+    // Close starting window when clicking the Start Game button.
+    document.getElementById('closeInstructions').addEventListener('click', () => {
+      document.getElementById('instructionOverlay').style.display = 'none';
+    });
+    
+    // Close green poster window when clicking its close button.
+    document.getElementById('close-green-poster').addEventListener('click', () => {
+      document.getElementById('greenPosterWindow').style.display = 'none';
+    });
+    
+    // Close generic poster window when clicking its close button.
+    document.getElementById('close-generic-poster').addEventListener('click', () => {
+      document.getElementById('genericPosterWindow').style.display = 'none';
+    });
     
     // **1) Imports & Constants**
     const tileSize = 80;
@@ -253,55 +331,21 @@
     }
     
     function addPosters() {
-      createPoster(tileSize * 2, tileSize * 4.5, 0xff0000);
-      createPoster(tileSize * 5, tileSize * 1.5, 0x00ff00);
-      createPoster(tileSize * 6, tileSize * 6, 0x0000ff);
-      createPoster(tileSize * 8, tileSize * 3, 0xffff00);
-      createPoster(tileSize * 3, tileSize * 7.5, 0xff00ff);
+      createPoster(tileSize * 2, tileSize * 4.5, 0xff0000); // red
+      createPoster(tileSize * 5, tileSize * 1.5, 0x00ff00); // green
+      createPoster(tileSize * 6, tileSize * 6, 0x0000ff); // blue
+      createPoster(tileSize * 8, tileSize * 3, 0xffff00); // yellow
+      createPoster(tileSize * 3, tileSize * 7.5, 0xff00ff); // magenta
       scene.updateMatrixWorld(true);
       renderer.render(scene, camera);
     }
     addPosters();
     
-    // **9) Interaction**
+    // **9) Poster Interaction**
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     
     function setupPosterInteraction() {
-      const overlay = document.createElement("div");
-      overlay.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 300px;
-        height: 200px;
-        background-color: white;
-        border: 2px solid black;
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        display: none;
-        z-index: 10;
-      `;
-      overlay.innerHTML = `
-        <div style="padding: 10px; background: #333; color: white; display: flex; justify-content: space-between; align-items: center;">
-          <span>Interactive Poster</span>
-          <button id="close-overlay" style="background: red; border: none; color: white; font-weight: bold; cursor: pointer;">X</button>
-        </div>
-        <div id="overlay-content" style="padding: 10px;">Poster Content</div>
-      `;
-      document.body.appendChild(overlay);
-    
-      document.getElementById("close-overlay").addEventListener("click", () => {
-        overlay.style.display = "none";
-      });
-    
-      function openWindow(color) {
-        const content = document.getElementById("overlay-content");
-        content.innerHTML = `Clicked color: #${color.toUpperCase()}`;
-        overlay.style.display = "block";
-      }
-    
       window.addEventListener("click", (event) => {
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -309,15 +353,25 @@
         const intersects = raycaster.intersectObjects(posters);
         if (intersects.length > 0) {
           const poster = intersects[0].object;
-          openWindow(poster.material.color.getHexString());
+          const posterColorHex = poster.material.color.getHexString();
+          if (posterColorHex.toLowerCase() === "00ff00") {
+            // Green poster – open its custom 98.css window
+            document.getElementById("greenPosterWindow").style.display = "block";
+          } else {
+            // Generic poster window for other colors
+            const genericWindow = document.getElementById("genericPosterWindow");
+            const genericContent = document.getElementById("genericPosterContent");
+            genericContent.innerHTML = `Clicked color: #${posterColorHex.toUpperCase()}`;
+            genericWindow.style.display = "block";
+          }
         }
       });
     }
     setupPosterInteraction();
     
-    // **10) Mini-Map**
+    // **10) Mini-Map (Without Chat Cloud)**
     const mapCanvas = document.getElementById("map-canvas");
-    mapCanvas.style.display = "none"; // Hide the canvas element from the DOM
+    mapCanvas.style.display = "none";
     const mapCtx = mapCanvas.getContext("2d");
     mapCanvas.width = 200;
     mapCanvas.height = 400;
@@ -326,28 +380,97 @@
     mapTexture.minFilter = THREE.LinearFilter;
     mapTexture.magFilter = THREE.LinearFilter;
     
-    // Flag to control the display of the initial message
-    let showMessage = true;
+    function drawMosaic(ctx, x, y, width, height) {
+      const mosaicSize = 2;
+      for (let row = 0; row < height / mosaicSize; row++) {
+        for (let col = 0; col < width / mosaicSize; col++) {
+          ctx.fillStyle = (row + col) % 2 === 0 ? 'white' : 'black';
+          ctx.fillRect(
+            x + col * mosaicSize,
+            y + row * mosaicSize,
+            mosaicSize,
+            mosaicSize
+          );
+        }
+      }
+    }
     
-    // Coordinates and dimensions for the chat cloud and 'X' button
-    const chatCloud = {
-      x: 15,        // Padding from the canvas edges
-      y: 15,
-      width: 170,   // Increased width
-      height: 180,  // Increased height to fit all text
-      padding: 15,  // Increased padding for text
-      borderRadius: 15
-    };
+    function drawWallCell(ctx, row, col, x, y, size) {
+      let hasWallBelow = false;
+      if (row < maze.length - 1 && maze[row + 1][col] === 1) {
+        hasWallBelow = true;
+      }
+      if (hasWallBelow) {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x, y, size, size);
+      } else {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x, y, size, size / 2);
+        drawMosaic(ctx, x, y + size / 2, size, size / 2);
+      }
+    }
     
-    const closeButton = {
-      x: chatCloud.x + chatCloud.width - 30, // Positioned inside the enlarged chat cloud
-      y: chatCloud.y + 20,                  // Adjusted Y position to avoid overlapping text
-      size: 20                               // Increased size for better accessibility
-    };
+    function drawPixelatedX(ctx, x, y, size, color) {
+      const mosaicSize = 3;
+      const numCells = Math.floor(size / mosaicSize);
+      ctx.fillStyle = color;
+      for (let row = 0; row < numCells; row++) {
+        for (let col = 0; col < numCells; col++) {
+          if (row === col || row + col === numCells - 1) {
+            ctx.fillRect(
+              x + col * mosaicSize,
+              y + row * mosaicSize,
+              mosaicSize,
+              mosaicSize
+            );
+          }
+        }
+      }
+    }
     
-    /**
-     * Create a rounded rectangle shape.
-     */
+    function drawPlayerSquare(ctx, x, y) {
+      const size = 10;
+      ctx.fillStyle = 'white';
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+    }
+    
+    function drawMap() {
+      mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+      mapCtx.fillStyle = "black";
+      mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+      
+      const centerX = mapCanvas.width / 2;
+      const centerZ = mapCanvas.height / 2;
+      const playerMapX = (player.x / tileSize) * mapScale;
+      const playerMapZ = (player.z / tileSize) * mapScale;
+    
+      mapCtx.save();
+      mapCtx.translate(centerX, centerZ);
+      mapCtx.rotate(player.angle);
+    
+      for (let row = 0; row < maze.length; row++) {
+        for (let col = 0; col < maze[row].length; col++) {
+          if (maze[row][col] === 1) {
+            const cellX = col * mapScale - playerMapX;
+            const cellZ = row * mapScale - playerMapZ;
+            drawWallCell(mapCtx, row, col, cellX, cellZ, mapScale);
+          }
+        }
+      }
+    
+      posters.forEach((poster) => {
+        const posterX = (poster.position.x / tileSize) * mapScale - playerMapX;
+        const posterZ = (poster.position.z / tileSize) * mapScale - playerMapZ;
+        const colorHex = poster.material.color.getHexString();
+        const color = `#${colorHex}`;
+        drawPixelatedX(mapCtx, posterX - 8, posterZ - 8, 12, color);
+      });
+    
+      mapCtx.restore();
+    
+      drawPlayerSquare(mapCtx, centerX, centerZ);
+    }
+    
     function createRoundedRectShape(width, height, radius) {
       const shape = new THREE.Shape();
       shape.moveTo(-width / 2 + radius, height / 2);
@@ -362,9 +485,6 @@
       return shape;
     }
     
-    /**
-     * Create the smartphone mesh with a mini-map screen.
-     */
     function createSmartphoneMesh() {
       const phoneWidth = 8;
       const phoneHeight = 15;
@@ -437,223 +557,6 @@
     phoneMesh.position.set(10, -4, -10);
     phoneMesh.scale.set(0.5, 0.5, 0.5);
     
-    /**
-     * Draw a mosaic pattern.
-     */
-    function drawMosaic(ctx, x, y, width, height) {
-      const mosaicSize = 2;
-      for (let row = 0; row < height / mosaicSize; row++) {
-        for (let col = 0; col < width / mosaicSize; col++) {
-          ctx.fillStyle = (row + col) % 2 === 0 ? 'white' : 'black';
-          ctx.fillRect(
-            x + col * mosaicSize,
-            y + row * mosaicSize,
-            mosaicSize,
-            mosaicSize
-          );
-        }
-      }
-    }
-    
-    /**
-     * Draw a wall cell on the mini-map.
-     */
-    function drawWallCell(ctx, row, col, x, y, size) {
-      let hasWallBelow = false;
-      if (row < maze.length - 1 && maze[row + 1][col] === 1) {
-        hasWallBelow = true;
-      }
-      if (hasWallBelow) {
-        ctx.fillStyle = 'white';
-        ctx.fillRect(x, y, size, size);
-      } else {
-        ctx.fillStyle = 'white';
-        ctx.fillRect(x, y, size, size / 2);
-        drawMosaic(ctx, x, y + size / 2, size, size / 2);
-      }
-    }
-    
-    /**
-     * Draw a colorful pixelated 'X' for posters.
-     */
-    function drawPixelatedX(ctx, x, y, size, color) {
-      const mosaicSize = 3;
-      const numCells = Math.floor(size / mosaicSize);
-      ctx.fillStyle = color;
-      for (let row = 0; row < numCells; row++) {
-        for (let col = 0; col < numCells; col++) {
-          if (row === col || row + col === numCells - 1) {
-            ctx.fillRect(
-              x + col * mosaicSize,
-              y + row * mosaicSize,
-              mosaicSize,
-              mosaicSize
-            );
-          }
-        }
-      }
-    }
-    
-    /**
-     * Draw a white square as the player pointer.
-     */
-    function drawPlayerSquare(ctx, x, y) {
-      const size = 10; // Size of the square
-      ctx.fillStyle = 'white';
-      ctx.fillRect(x - size / 2, y - size / 2, size, size);
-    }
-    
-    /**
-     * Draw a chat cloud with the message and a close 'X' button.
-     */
-    function drawChatCloud(ctx) {
-      // Draw chat cloud background
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(chatCloud.x + chatCloud.borderRadius, chatCloud.y);
-      ctx.lineTo(chatCloud.x + chatCloud.width - chatCloud.borderRadius, chatCloud.y);
-      ctx.quadraticCurveTo(chatCloud.x + chatCloud.width, chatCloud.y, chatCloud.x + chatCloud.width, chatCloud.y + chatCloud.borderRadius);
-      ctx.lineTo(chatCloud.x + chatCloud.width, chatCloud.y + chatCloud.height - chatCloud.borderRadius);
-      ctx.quadraticCurveTo(chatCloud.x + chatCloud.width, chatCloud.y + chatCloud.height, chatCloud.x + chatCloud.width - chatCloud.borderRadius, chatCloud.y + chatCloud.height);
-      ctx.lineTo(chatCloud.x + chatCloud.borderRadius, chatCloud.y + chatCloud.height);
-      ctx.quadraticCurveTo(chatCloud.x, chatCloud.y + chatCloud.height, chatCloud.x, chatCloud.y + chatCloud.height - chatCloud.borderRadius);
-      ctx.lineTo(chatCloud.x, chatCloud.y + chatCloud.borderRadius);
-      ctx.quadraticCurveTo(chatCloud.x, chatCloud.y, chatCloud.x + chatCloud.borderRadius, chatCloud.y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    
-      // Draw the message text
-      ctx.fillStyle = 'black';
-      ctx.font = '14px Arial';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      const text = "Use arrow keys to move.\nClick on posters marked with X on the map.\nDon't get lost!";
-      const lines = text.split('\n');
-      lines.forEach((line, index) => {
-        // Start text below the 'X' button to prevent overlap
-        const textY = chatCloud.y + chatCloud.padding + closeButton.size + (index * 18);
-        ctx.fillText(line, chatCloud.x + chatCloud.padding, textY);
-      });
-    
-      // Draw the 'X' button
-      ctx.fillStyle = 'red';
-      ctx.beginPath();
-      ctx.arc(closeButton.x, closeButton.y, closeButton.size / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'white';
-      ctx.font = '16px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('X', closeButton.x, closeButton.y);
-    }
-    
-    /**
-     * Draw the mini-map.
-     */
-    function drawMap() {
-      mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
-      mapCtx.fillStyle = "black";
-      mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
-      
-      const centerX = mapCanvas.width / 2;
-      const centerZ = mapCanvas.height / 2;
-      const playerMapX = (player.x / tileSize) * mapScale;
-      const playerMapZ = (player.z / tileSize) * mapScale;
-    
-      mapCtx.save();
-      mapCtx.translate(centerX, centerZ);
-      mapCtx.rotate(player.angle);
-    
-      // Draw walls
-      for (let row = 0; row < maze.length; row++) {
-        for (let col = 0; col < maze[row].length; col++) {
-          if (maze[row][col] === 1) {
-            const cellX = col * mapScale - playerMapX;
-            const cellZ = row * mapScale - playerMapZ;
-            drawWallCell(mapCtx, row, col, cellX, cellZ, mapScale);
-          }
-        }
-      }
-    
-      // Draw posters with colorful 'X's
-      posters.forEach((poster) => {
-        const posterX = (poster.position.x / tileSize) * mapScale - playerMapX;
-        const posterZ = (poster.position.z / tileSize) * mapScale - playerMapZ;
-        const colorHex = poster.material.color.getHexString();
-        const color = `#${colorHex}`;
-        drawPixelatedX(mapCtx, posterX - 8, posterZ - 8, 12, color);
-      });
-    
-      mapCtx.restore();
-    
-      // Draw player as a white square
-      drawPlayerSquare(mapCtx, centerX, centerZ);
-    
-      // Draw chat cloud if the message is to be shown
-      if (showMessage) {
-        drawChatCloud(mapCtx);
-      }
-    }
-    
-    /**
-     * Handle click events to close the chat message.
-     */
-    function setupMapMessageInteraction() {
-      // Raycaster and mouse vector for detecting clicks on the phone screen
-      const raycasterMessage = new THREE.Raycaster();
-      const mouseMessage = new THREE.Vector2();
-    
-      window.addEventListener("click", (event) => {
-        if (!showMessage) return; // No need to handle if message is hidden
-    
-        // Calculate mouse position in normalized device coordinates (-1 to +1)
-        mouseMessage.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouseMessage.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    
-        // Update the raycaster with the camera and mouse position
-        raycasterMessage.setFromCamera(mouseMessage, camera);
-    
-        // Calculate objects intersecting the ray
-        const intersects = raycasterMessage.intersectObject(phoneMesh, true);
-    
-        if (intersects.length > 0) {
-          // Get the intersection point
-          const intersect = intersects[0];
-          const uv = intersect.uv; // UV coordinates (0 to 1)
-    
-          // Map UV to mapCanvas coordinates
-          const canvasX = uv.x * mapCanvas.width;
-          const canvasY = (1 - uv.y) * mapCanvas.height; // Flip Y axis
-    
-          // Debugging: Log the canvas coordinates
-          console.log(`Click detected at canvas coordinates: (${canvasX.toFixed(2)}, ${canvasY.toFixed(2)})`);
-    
-          // Check if the click is within the 'X' button area using distance
-          const distance = Math.sqrt(
-            Math.pow(canvasX - closeButton.x, 2) +
-            Math.pow(canvasY - closeButton.y, 2)
-          );
-          if (distance <= closeButton.size) {
-            // Close the message
-            showMessage = false;
-            drawMap();
-            mapTexture.needsUpdate = true;
-          }
-        }
-      });
-    }
-    setupMapMessageInteraction();
-    
-    /**
-     * Initial drawing of the map with the message.
-     */
-    drawMap();
-    mapTexture.needsUpdate = true;
-    
-    // **11) Animation & Camera Update**
     function updateCamera() {
       const baseHeight = 40;
       const bobOffset = Math.sin(walkTime) * 2;
@@ -664,7 +567,6 @@
     function animate() {
       requestAnimationFrame(animate);
     
-      // Movement
       let forward = 0;
       if (keys.ArrowUp) forward = 1;
       if (keys.ArrowDown) forward = -1;
@@ -675,7 +577,6 @@
       const dx = -Math.sin(player.angle) * step;
       const dz = -Math.cos(player.angle) * step;
     
-      // Check collisions before moving
       if (!isCollidingWithWall(player.x + dx, player.z, playerRadius)) {
         player.x += dx;
       }
@@ -683,26 +584,19 @@
         player.z += dz;
       }
     
-      // Head bobbing
       if (forward !== 0) {
         walkTime += 0.1;
       } else {
         walkTime = 0;
       }
     
-      // Update camera
       updateCamera();
-    
-      // Draw the map and update texture
       drawMap();
       mapTexture.needsUpdate = true;
-    
-      // Render the scene
       renderer.render(scene, camera);
     }
     animate();
     
-    // **12) Handle Window Resizes**
     window.addEventListener("resize", () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth / window.innerHeight;
